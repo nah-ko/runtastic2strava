@@ -31,7 +31,7 @@ activities = json.loads(re.search(r"index_data = ([^;]+);", resp.text).group(1))
 
 last_sync_day = (datetime.datetime.utcnow()
                  - datetime.timedelta(
-                     days=settings.get('days_window', settings['sync_days']))).strftime("%Y-%m-%d")
+                     days=settings.get('days_window', 3))).strftime("%Y-%m-%d")
 
 s = smtplib.SMTP(settings['smtp_server'])
 
