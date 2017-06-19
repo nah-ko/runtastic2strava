@@ -2,6 +2,7 @@
 import datetime
 import json
 import re
+import sys
 
 import requests
 import six
@@ -17,11 +18,24 @@ STRAVA_UPLOAD = "upload@strava.com"
 login = requests.post("https://www.runtastic.com/en/d/users/sign_in",
                       data={"user[email]": settings['runtastic_email'],
                             "user[password]": settings['runtastic_pass']})
+
+if login.status_code // 100 != 2:
+    print("Error logging in Runtastic, aborting")
+
 resp = requests.get("https://www.runtastic.com/en/users/%s/sport-sessions"
                     % settings['runtastic_username'],
                     cookies=login.cookies)
 
-activities = json.loads(re.search(r"index_data = ([^;]+);", resp.text).group(1))
+if resp.status_code // 100 != 2:
+    print("Error doing Runtastic request, aborting")
+    sys.exit(1)
+
+match_data = re.search(r"index_data = ([^;]+);", resp.text)
+if not match_data:
+    print("Error looking for data, aborting")
+    sys.exit(1)
+
+activities = json.loads(match_data.group(1))
 
 last_sync_day = (datetime.datetime.utcnow()
                  - datetime.timedelta(
@@ -39,12 +53,15 @@ for activity in filter(lambda a: a[1] >= last_sync_day, activities):
         cookies=login.cookies)
     filename = "%s.tcx" % activity_id
     # Save the file locally, just in case.
-    with file("archives/" + filename, "w+") as f:
-        f.write(resp.text.encode("UTF-8"))
+    with open("archives/" + filename, "w+") as f:
+        f.write(resp.text)
         f.seek(0)
         try:
             client.upload_activity(f, data_type="tcx")
         except stravalib.exc.ActivityUploadFailed as e:
-            if 'duplicate' not in six.text_type(e):
+            if not ('duplicate' in six.text_type(e)
+                    or 'Unrecognized file type' in six.text_type(e)
+                    or 'The file is empty' in six.text_type(e)):
                 raise
+
     print("Sent activity %s from %s" % (activity_id, activity[1]))
